@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BUDDY TV</title>
+    <base href="./">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Roboto', sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .container {
+            display: flex;
+            height: 100%;
+            overflow: hidden;
+            flex-direction: row;
+            background-color: #181818;
+        }
+        .sidebar {
+            width: 250px;
+            background-color: #1e1e1e;
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.5);
+            max-height: calc(100vh - 20px);
+            border-right: 1px solid #444;
+            height: 100%;
+        }
+        .main-content {
+            flex-grow: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            height: 100%;
+        }
+        .epg-guide {
+            background-color: #2a2a2a;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        .epg-current {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #00ff00;
+        }
+        .epg-next {
+            font-size: 16px;
+            color: #ffffff;
+            margin-top: 10px;
+        }
+        .epg-time {
+            font-size: 14px;
+            color: #888888;
+            margin-top: 5px;
+        }
+        .video-container {
+            position: relative;
+            height: calc(100vh - 180px);
+            overflow: hidden;
+            background-color: #000;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+            border: 2px solid #444;
+        }
+        #videoPlayer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+        }
+        .channel-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            background-color: #2a2a2a;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+        }
+        .channel-item:hover {
+            background-color: #3a3a3a;
+            transform: scale(1.02);
+        }
+        .channel-group {
+            margin-bottom: 20px;
+        }
+        h1, h2 {
+            color: #ffffff;
+        }
+        #channelList {
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+        }
+        ::-webkit-scrollbar {
+            width: 12px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #4a4a4a;
+            border-radius: 10px;
+            border: 3px solid #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #5a5a5a;
+        }
+        .epg-item {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+        }
+        .epg-item strong {
+            font-weight: bold;
+        }
+        .loading-indicator {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 4px;
+            font-size: 16px;
+            z-index: 1000;
+        }
+        .loading-indicator.show {
+            display: block;
+        }
+        .error-indicator {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 4px;
+            font-size: 16px;
+            z-index: 1000;
+            text-align: center;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .error-indicator.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Channels</h2>
+            <div id="channelList"></div>
+        </div>
+        <div class="main-content">
+            <div class="epg-guide">
+                <div id="epgCurrent" class="epg-current">Loading current program...</div>
+                <div id="epgNext" class="epg-next">Loading next program...</div>
+                <div id="epgTime" class="epg-time">Loading times...</div>
+            </div>
+            <div class="video-container">
+                <video
+                    id="videoPlayer"
+                    controls
+                    autoplay
+                    muted
+                    preload="auto"
+                ></video>
+                <div id="loadingIndicator" class="loading-indicator">Loading...</div>
+                <div id="errorIndicator" class="error-indicator">Error: Unable to play this channel. Please try another one.</div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        let channels = [];
+        const channelGroups = {};
+        let hls = null;
+        let url;
+
+        function fetchM3U() {
+            console.log('Fetching M3U file...');
+            fetch('https://raw.githubusercontent.com/matthuisman/i.mjh.nz/main/moveonjoy.m3u')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    console.log('Parsing M3U file...');
+                    channels = parseM3U(data);
+                    displayChannels();
+                    fetchEPG();
+                })
+                .catch(error => {
+                    console.error('Error fetching M3U file:', error);
+                    console.log('Error loading channel list. Please check the console for details.');
+                });
+        }
+
+        function fetchEPG() {
+            console.log('Fetching EPG data...');
+            fetch('https://raw.githubusercontent.com/ydbf/MoveOnJoy/refs/heads/main/epg.xml')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    console.log('Parsing EPG data...');
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(data, 'text/xml');
+                    const programs = parseEPG(xmlDoc);
+                    channels.forEach(channel => {
+                        const channelPrograms = programs.filter(p => p.channel === channel.id);
+                        if (channelPrograms.length > 0) {
+                            channel.programs = channelPrograms;
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching EPG data:', error);
+                    console.log('Error loading EPG data. Please check the console for details.');
+                });
+        }
+
+        function parseM3U(data) {
+            const lines = data.split('\n');
+            let currentChannel = null;
+            const channels = [];
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (line.startsWith('#EXTINF:')) {
+                    currentChannel = {
+                        duration: line.split(',')[0].split(':')[1],
+                        title: '',
+                        id: '',
+                        programs: []
+                    };
+                    const titleMatch = line.match(/,([^,]+)$/);
+                    currentChannel.title = titleMatch ? titleMatch[1].trim().replace(/\(.*?\)/g, '').trim() : 'Untitled Channel';
+                } else if (line.startsWith('#EXTGRP:')) {
+                    currentChannel.group = line.split(':')[1].trim();
+                    if (!channelGroups[currentChannel.group]) {
+                        channelGroups[currentChannel.group] = [];
+                    }
+                } else if (line.startsWith('#EXTTVM:')) {
+                    currentChannel.id = line.split(':')[1].trim();
+                } else if (line && currentChannel) {
+                    currentChannel.url = line;
+                    channels.push(currentChannel);
+                    currentChannel = null;
+                }
+            });
+
+            // Sort channels by group
+            channels.sort((a, b) => {
+                if (a.group === b.group) {
+                    return a.title.localeCompare(b.title);
+                }
+                return a.group.localeCompare(b.group);
+            });
+
+            return channels;
+        }
+
+        function parseEPG(xmlDoc) {
+            const programs = [];
+            const programmeElements = xmlDoc.getElementsByTagName('programme');
+
+            for (let i = 0; i < programmeElements.length; i++) {
+                const programme = programmeElements[i];
+                const channel = programme.getAttribute('channel');
+                const startTime = programme.getAttribute('start');
+                const endTime = programme.getAttribute('stop');
+
+                const title = programme.getElementsByTagName('title')[0]?.textContent || 'Unknown';
+                const descElement = programme.getElementsByTagName('desc')[0];
+                const desc = descElement ? descElement.textContent.trim() || 'No description available' : 'No description available';
+                const categoryElement = programme.getElementsByTagName('category')[0];
+                const category = categoryElement ? categoryElement.textContent.trim() : 'Uncategorized';
+
+                programs.push({
+                    channel,
+                    startTime,
+                    endTime,
+                    title,
+                    description: desc,
+                    category
+                });
+            }
+
+            return programs;
+        }
+
+        function displayChannels() {
+            const channelList = document.getElementById('channelList');
+            channelList.innerHTML = '';
+
+            Object.keys(channelGroups).sort().forEach(group => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'channel-group';
+                groupDiv.innerHTML = `<h3>${group}</h3>`;
+
+                channelGroups[group].forEach(channel => {
+                    const channelDiv = document.createElement('div');
+                    channelDiv.className = 'channel-item';
+                    channelDiv.innerHTML = `<strong>${channel.title}</strong>`;
+                    channelDiv.onclick = () => playChannel(channel.url);
+                    groupDiv.appendChild(channelDiv);
+                });
+
+                channelList.appendChild(groupDiv);
+            });
+        }
+
+        function updateEPGDisplay(channel) {
+            if (!channel || !channel.programs || channel.programs.length === 0) {
+                document.getElementById('epgCurrent').textContent = 'No program information available';
+                document.getElementById('epgNext').textContent = '';
+                document.getElementById('epgTime').textContent = '';
+                return;
+            }
+
+            const now = new Date();
+            let currentProgram = null;
+            let nextProgram = null;
+
+            for (let i = 0; i < channel.programs.length; i++) {
+                const program = channel.programs[i];
+                const startTime = new Date(program.startTime);
+                const endTime = new Date(program.endTime);
+
+                if (now >= startTime && now < endTime) {
+                    currentProgram = program;
+                    if (i < channel.programs.length - 1) {
+                        nextProgram = channel.programs[i + 1];
+                    }
+                    break;
+                }
+            }
+
+            if (!currentProgram) {
+                document.getElementById('epgCurrent').textContent = 'No current program';
+                document.getElementById('epgNext').textContent = '';
+                document.getElementById('epgTime').textContent = '';
+                return;
+            }
+
+            document.getElementById('epgCurrent').textContent = `${currentProgram.title} - ${currentProgram.category}`;
+            document.getElementById('epgTime').textContent = `Start: ${new Date(currentProgram.startTime).toLocaleTimeString()} - End: ${new Date(currentProgram.endTime).toLocaleTimeString()}`;
+
+            if (nextProgram) {
+                document.getElementById('epgNext').textContent = `Next: ${nextProgram.title} - ${nextProgram.category}`;
+            } else {
+                document.getElementById('epgNext').textContent = 'No next program information available';
+            }
+        }
+
+        function playChannel(url) {
+            const videoPlayer = document.getElementById('videoPlayer');
+            const epgCurrent = document.getElementById('epgCurrent');
+            const epgNext = document.getElementById('epgNext');
+            const epgTime = document.getElementById('epgTime');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const errorIndicator = document.getElementById('errorIndicator');
+
+            // Clean up previous players
+            if (hls) {
+                try {
+                    hls.destroy();
+                } catch (error) {
+                    console.error('Error destroying previous HLS player:', error);
+                }
+                hls = null;
+            }
+
+            // Reset video player
+            videoPlayer.src = '';
+            videoPlayer.pause();
+            videoPlayer.currentTime = 0;
+            videoPlayer.load();
+
+            // Find the channel with this URL to get its program info
+            const channel = channels.find(c => c.url === url);
+            if (channel) {
+                updateEPGDisplay(channel);
+            }
+
+            console.log('Attempting to play channel:', channel?.title, 'URL:', url);
+
+            // Set up HLS if supported
+            if (Hls.isSupported()) {
+                hls = new Hls({
+                    maxMaxBufferLength: 60,
+                    maxBufferLength: 60,
+                    liveSyncDurationCount: 3,
+                    liveMaxLatencyDurationCount: 6,
+                    maxRetry: 1,
+                    retryDelay: 1000,
+                    maxRetryDelay: 2000,
+                    capLevelToPlayerSize: true,
+                    enableWorker: true,
+                    enableSoftwareAES: true,
+                    xhrSetup: function(xhr, url) {
+                        xhr.withCredentials = false;
+                        xhr.timeout = 2000;
+                    }
+                });
+
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    console.error('HLS error:', data);
+                    if (data.fatal) {
+                        try {
+                            hls.destroy();
+                        } catch (error) {
+                            console.error('Error destroying HLS player:', error);
+                        }
+                        hls = null;
+                        
+                        // Try native playback as fallback
+                        videoPlayer.src = url;
+                        videoPlayer.play().catch(error => {
+                            console.error('Native playback error:', error);
+                            showError('Unable to play this channel. Please try another one.');
+                        });
+                    }
+                });
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    console.log('Manifest parsed successfully');
+                    videoPlayer.play().catch(error => {
+                        console.error('Playback error:', error);
+                        showError('Unable to play this channel. Please try another one.');
+                    });
+                });
+
+                hls.loadSource(url);
+                hls.attachMedia(videoPlayer);
+            } else {
+                // Try native playback as fallback
+                videoPlayer.src = url;
+                videoPlayer.play().catch(error => {
+                    console.error('Native playback error:', error);
+                    showError('Unable to play this channel. Please try another one.');
+                });
+            }
+
+            // Add event listeners for better error handling
+            videoPlayer.addEventListener('error', (event) => {
+                console.error('Video error:', videoPlayer.error);
+                showError('Unable to play this channel. Please try another one.');
+            });
+
+            videoPlayer.addEventListener('stalled', () => {
+                console.error('Video stalled');
+                showError('Video playback is stalled. Please try another channel.');
+            });
+
+            // Add a loading indicator instead of waiting alert
+            videoPlayer.addEventListener('waiting', () => {
+                console.log('Video waiting for data');
+                // Show loading indicator after a short delay
+                setTimeout(() => {
+                    loadingIndicator.classList.add('show');
+                }, 500); // Show after 500ms
+            });
+
+            // Hide loading indicator when video starts playing
+            videoPlayer.addEventListener('playing', () => {
+                loadingIndicator.classList.remove('show');
+                errorIndicator.classList.remove('show');
+            });
+
+            // Hide loading indicator on error
+            videoPlayer.addEventListener('error', () => {
+                loadingIndicator.classList.remove('show');
+            });
+
+            // Hide loading indicator when playback is complete
+            videoPlayer.addEventListener('ended', () => {
+                loadingIndicator.classList.remove('show');
+            });
+
+            // Add a timeout to prevent infinite loading
+            setTimeout(() => {
+                if (videoPlayer.paused && !videoPlayer.ended) {
+                    console.error('Playback timeout');
+                    showError('Playback timed out. Please try another channel.');
+                    if (hls) {
+                        try {
+                            hls.destroy();
+                        } catch (error) {
+                            console.error('Error destroying HLS player:', error);
+                        }
+                        hls = null;
+                    }
+                    videoPlayer.src = '';
+                }
+            }, 5000);
+        }
+
+        function showError(message) {
+            const errorIndicator = document.getElementById('errorIndicator');
+            errorIndicator.textContent = `Error: ${message}`;
+            errorIndicator.classList.add('show');
+            // Hide error after 5 seconds
+            setTimeout(() => {
+                errorIndicator.classList.remove('show');
+            }, 5000);
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchM3U);
+    </script>
+</body>
+</html>
