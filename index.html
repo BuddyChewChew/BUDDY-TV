@@ -188,7 +188,7 @@
         let channels = [];
         const channelGroups = {};
         let hls = null;
-        let url;
+        let currentUrl;
 
         function fetchM3U() {
             console.log('Fetching M3U file...');
@@ -206,7 +206,7 @@
                 })
                 .catch(error => {
                     console.error('Error fetching M3U file:', error);
-                    console.log('Error loading channel list. Please check the console for details.');
+                    showError('Error loading channel list. Please check the console for details.');
                 });
         }
 
@@ -353,7 +353,7 @@
                         channelObj.isNew = isNew;
                         
                         // If this is the current channel, update the display
-                        if (url && channelObj.url === url) {
+                        if (currentUrl && channelObj.url === currentUrl) {
                             updateEPGDisplay(channelObj);
                         }
                     }
@@ -447,9 +447,6 @@
 
         function playChannel(url) {
             const videoPlayer = document.getElementById('videoPlayer');
-            const epgCurrent = document.getElementById('epgCurrent');
-            const epgNext = document.getElementById('epgNext');
-            const epgTime = document.getElementById('epgTime');
             const loadingIndicator = document.getElementById('loadingIndicator');
             const errorIndicator = document.getElementById('errorIndicator');
 
@@ -468,6 +465,9 @@
             videoPlayer.pause();
             videoPlayer.currentTime = 0;
             videoPlayer.load();
+
+            // Set the current URL
+            currentUrl = url;
 
             // Find the channel with this URL to get its program info
             const channel = channels.find(c => c.url === url);
@@ -490,7 +490,7 @@
                     capLevelToPlayerSize: true,
                     enableWorker: true,
                     enableSoftwareAES: true,
-                    xhrSetup: function(xhr, url) {
+                    xhrSetup: function(xhr) {
                         xhr.withCredentials = false;
                         xhr.timeout = 2000;
                     }
@@ -537,68 +537,4 @@
             // Add event listeners for better error handling
             videoPlayer.addEventListener('error', (event) => {
                 console.error('Video error:', videoPlayer.error);
-                showError('Unable to play this channel. Please try another one.');
-            });
-
-            videoPlayer.addEventListener('stalled', () => {
-                console.error('Video stalled');
-                showError('Video playback is stalled. Please try another channel.');
-            });
-
-            // Add a loading indicator instead of waiting alert
-            videoPlayer.addEventListener('waiting', () => {
-                console.log('Video waiting for data');
-                // Show loading indicator after a short delay
-                setTimeout(() => {
-                    loadingIndicator.classList.add('show');
-                }, 500); // Show after 500ms
-            });
-
-            // Hide loading indicator when video starts playing
-            videoPlayer.addEventListener('playing', () => {
-                loadingIndicator.classList.remove('show');
-                errorIndicator.classList.remove('show');
-            });
-
-            // Hide loading indicator on error
-            videoPlayer.addEventListener('error', () => {
-                loadingIndicator.classList.remove('show');
-            });
-
-            // Hide loading indicator when playback is complete
-            videoPlayer.addEventListener('ended', () => {
-                loadingIndicator.classList.remove('show');
-            });
-
-            // Add a timeout to prevent infinite loading
-            setTimeout(() => {
-                if (videoPlayer.paused && !videoPlayer.ended) {
-                    console.error('Playback timeout');
-                    showError('Playback timed out. Please try another channel.');
-                    if (hls) {
-                        try {
-                            hls.destroy();
-                        } catch (error) {
-                            console.error('Error destroying HLS player:', error);
-                        }
-                        hls = null;
-                    }
-                    videoPlayer.src = '';
-                }
-            }, 5000);
-        }
-
-        function showError(message) {
-            const errorIndicator = document.getElementById('errorIndicator');
-            errorIndicator.textContent = `Error: ${message}`;
-            errorIndicator.classList.add('show');
-            // Hide error after 5 seconds
-            setTimeout(() => {
-                errorIndicator.classList.remove('show');
-            }, 5000);
-        }
-
-        document.addEventListener('DOMContentLoaded', fetchM3U);
-    </script>
-</body>
-</html>
+                showError('Unable to play this channel
