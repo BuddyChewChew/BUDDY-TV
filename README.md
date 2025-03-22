@@ -1,1 +1,1 @@
-Link: https://BuddyChewChew.github.io/BUDDY-TV/your-file.html
+Link: https://BuddyChewChew.github.io/BUDDY-TV/index.html
