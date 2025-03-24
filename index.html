@@ -461,7 +461,9 @@
 
             // Add CORS proxy if needed
             if (!secureUrl.includes('jmp2.uk')) {
-                secureUrl = `https://jmp2.uk/${secureUrl}`;
+                // Extract the path from the URL (remove protocol and domain)
+                const path = secureUrl.replace(/^https:\/\//, '');
+                secureUrl = `https://jmp2.uk/${path}`;
             }
 
             console.log('Final URL after processing:', secureUrl);
