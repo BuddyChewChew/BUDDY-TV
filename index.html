@@ -464,6 +464,8 @@
                 secureUrl = `https://jmp2.uk/${secureUrl}`;
             }
 
+            console.log('Final URL after processing:', secureUrl);
+
             // Set up HLS if supported
             if (Hls.isSupported()) {
                 hls = new Hls({
@@ -497,7 +499,8 @@
                         videoPlayer.src = secureUrl;
                         videoPlayer.play().catch(error => {
                             console.error('Native playback error:', error);
-                            alert('Unable to play this channel. Please try another one.');
+                            const errorMessage = error.message || 'Unknown error';
+                            alert(`Unable to play this channel. Error: ${errorMessage}. Please try another one.`);
                         });
                     }
                 });
@@ -506,7 +509,8 @@
                     console.log('Manifest parsed successfully');
                     videoPlayer.play().catch(error => {
                         console.error('Playback error:', error);
-                        alert('Unable to play this channel. Please try another one.');
+                        const errorMessage = error.message || 'Unknown error';
+                        alert(`Unable to play this channel. Error: ${errorMessage}. Please try another one.`);
                     });
                 });
 
@@ -517,14 +521,16 @@
                 videoPlayer.src = secureUrl;
                 videoPlayer.play().catch(error => {
                     console.error('Native playback error:', error);
-                    alert('Unable to play this channel. Please try another one.');
+                    const errorMessage = error.message || 'Unknown error';
+                    alert(`Unable to play this channel. Error: ${errorMessage}. Please try another one.`);
                 });
             }
 
             // Add event listeners for better error handling
             videoPlayer.addEventListener('error', (event) => {
                 console.error('Video error:', videoPlayer.error);
-                alert('Unable to play this channel. Please try another one.');
+                const errorMessage = videoPlayer.error?.message || 'Unknown error';
+                alert(`Unable to play this channel. Error: ${errorMessage}. Please try another one.`);
             });
 
             videoPlayer.addEventListener('stalled', () => {
